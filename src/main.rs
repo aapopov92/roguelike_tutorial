@@ -1,61 +1,67 @@
-use tcod::colors::*;
-use tcod::input::Key;
-use tcod::input::KeyCode::*;
-use tcod::console::*;
+use rltk::{GameState, Rltk, VirtualKeyCode, RGB};
+use specs::prelude::*;
+use specs_derive::Component;
+use std::cmp::{max, min};
 
-const SCREEN_WIDTH: i32 = 80;
-const SCREEN_HEIGHT: i32 = 50;
-
-const LIMIT_FPS: i32 = 20;
-
-struct Tcod {
-    root: Root,
+struct State {
+    ecs: World,
 }
 
+impl GameState for State {
+    fn tick(&mut self, ctx: &mut Rltk) {
+        let positions = self.ecs.read_storage::<Position>();
+        let renderables = self.ecs.read_storage::<Renderable>();
 
-fn main() {
-    tcod::system::set_fps(LIMIT_FPS);
-
-    let root = Root::initializer()
-        .font("arial10x10.png", FontLayout::Tcod)
-        .font_type(FontType::Greyscale)
-        .size(SCREEN_WIDTH, SCREEN_HEIGHT)
-        .title("libtcod turtorial")
-        .init();
-
-    let mut tcod = Tcod { root };
-
-    let mut player_x = SCREEN_WIDTH / 2;
-    let mut player_y = SCREEN_HEIGHT / 2;
-
-    while !tcod.root.window_closed() {
-        tcod.root.set_default_foreground(WHITE);
-        tcod.root.clear();
-        tcod.root.put_char(player_x, player_y, '@', BackgroundFlag::None);
-        tcod.root.flush();
-        let exit = handle_keys(&mut tcod, &mut player_x, &mut player_y);
-        if exit {
-            break;
+        for (pos, render) in (&positions, &renderables).join() {
+            ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
         }
     }
 }
 
-fn handle_keys(tcod: &mut Tcod, player_x: &mut i32, player_y: &mut i32) -> bool {
-    let key = tcod.root.wait_for_keypress(true);
-    match key {
-        Key {code: Up, ..} => *player_y -= 1,
-        Key {code: Down, ..} => *player_y += 1,
-        Key {code: Left, ..} => *player_x -= 1,
-        Key {code: Right, ..} => *player_x += 1,
+#[derive(Component)]
+struct Position {
+    x: i32,
+    y: i32,
+}
 
-        Key {code: Enter, alt: true, ..} => {
-            let fullscreen = tcod.root.is_fullscreen();
-            tcod.root.set_fullscreen(!fullscreen);
-        }
-        Key {code: Escape, ..} => return true,
+#[derive(Component)]
+struct Renderable {
+    glyph: rltk::FontCharType,
+    fg: RGB,
+    bg: RGB,
+}
 
-        _ => {}
+fn main() -> rltk::BError {
+    use rltk::RltkBuilder;
+
+    let context = RltkBuilder::simple80x50()
+        .with_title("Rogulike tutorial")
+        .build()?;
+
+    let mut gs = State { ecs: World::new() };
+    gs.ecs.register::<Position>();
+    gs.ecs.register::<Renderable>();
+
+    gs.ecs
+        .create_entity()
+        .with(Position { x: 40, y: 25 })
+        .with(Renderable {
+            glyph: rltk::to_cp437('@'),
+            fg: RGB::named(rltk::YELLOW),
+            bg: RGB::named(rltk::BLACK),
+        })
+        .build();
+
+    for i in 0..10 {
+        gs.ecs
+            .create_entity()
+            .with(Position { x: i * 7, y: 20 })
+            .with(Renderable {
+                glyph: rltk::to_cp437('☺'),
+                fg: RGB::named(rltk::RED),
+                bg: RGB::named(rltk::BLACK),
+            })
+            .build();
     }
-
-    false
+    rltk::main_loop(context, gs)
 }
